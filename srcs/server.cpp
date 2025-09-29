@@ -15,8 +15,9 @@
 #include <vector>
 #include <thread>
 #include <sstream>
+#include <atomic>
 
-Server::Server(const std::string &config_path) : _config_path(config_path)
+Server::Server(FileLogger *logger) : _logger(logger)
 {
     Log(ILogger::LogType::INFO, "Starting server...");
     
@@ -143,6 +144,18 @@ void Server::Bash_command(std::string command, int fd)
     system("rm .tmp.txt");
 }
 
+std::vector<std::string> Server::split(const std::string& command)
+{
+    std::vector<std::string> tokens;
+    std::istringstream iss(command);
+    std::string token;
+    
+    while (iss >> token)
+        tokens.push_back(token);
+    
+    return tokens;
+}
+
 int Server::Handle(std::string action, int fd)
 {
     std::string tmp;
@@ -184,7 +197,7 @@ int Server::Handle(std::string action, int fd)
     }
     else
     {
-        Log(ILogger::LogType::INFO, "The user from " + this->_ip[fd] + " input" + command);
+        Log(ILogger::LogType::INFO, "The user from " + this->_ip[fd] + " input" + action);
         send(this->_pollfds[fd].fd, tmp.c_str(), tmp.length(), 0);
     }
     this->_buffer[fd] = "";
@@ -221,8 +234,7 @@ int Server::Action(int fd)
 
 void	Server::Log(const ILogger::LogType &log_type, const std::string &msg)
 {
-	for (std::map<std::string, std::unique_ptr<ILogger>>::iterator it = this->_loggers.begin(); it != this->_loggers.end(); it++)
-		it->second->Log(log_type, msg);
+    this->_logger->Log(log_type, msg);
 }
 
 void    Server::Run(std::atomic<bool> &g_running)

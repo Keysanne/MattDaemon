@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <iomanip>
 #include <syslog.h>
+#include <iostream>
 
 std::mutex FileLogger::_mutex;
 
@@ -53,7 +54,6 @@ FileLogger::FileLogger(const std::string &directory, const std::string &file_nam
 {
 	if (!CreateDirectory(directory))
 		throw Exception("FileLogger error: Impossible to create directory '" + directory + "'.");
-
 	this->_date = GetDate();
 	SetFilePath();
 }
@@ -76,18 +76,6 @@ FileLogger &FileLogger::operator =(const FileLogger &o)
 	SetFilePath();
 	
 	return *this;
-}
-
-bool FileLogger::operator ==(const Config::Log &conf)
-{
-	if ((ILogger::Type)conf.type != ILogger::Type::FILE)
-		throw Exception("FileLogger error: Comparison with invalid Log Type");
-
-	if (	this->_directory != conf.directory
-		||	this->_file_name != conf.file_name)
-		return false;
-
-	return true;
 }
 
 void FileLogger::Log(const ILogger::LogType &log_type, const std::string &msg)
@@ -137,36 +125,6 @@ void FileLogger::SetFilePath(void)
 		throw Exception("FileLogger error: Impossible to open log file '" + file_path + "'.");
 }
 
-void FileLogger::Update(const Config::Log &conf)
-{
-	if (*this == conf)
-		return;
-
-	this->_file.close();
-
-	this->_directory = conf.directory;
-	this->_file_name = conf.file_name;
-
-	SetFilePath();
-}
-
-
-
-std::unique_ptr<ILogger> CreateLoggerByConf(const Config::Log &conf)
-{
-	switch (conf.type)
-	{
-		case ILogger::Type::FILE:
-			return std::unique_ptr<ILogger>(new FileLogger(conf.directory, conf.file_name));
-		case ILogger::Type::SYSLOG:
-			return std::unique_ptr<ILogger>(new SysLogger());
-		default:
-			break;
-	}
-
-	return std::unique_ptr<ILogger>(new FileLogger(conf.directory, conf.file_name));
-}
-
 bool CreateDirectory(const std::string& path)
 {
 	struct stat info;
@@ -209,51 +167,4 @@ bool CreateDirectory(const std::string& path)
 	}
 
 	return true;
-}
-
-SysLogger::SysLogger() : ILogger(SYSLOG)
-{
-	openlog("taskmaster", LOG_PID | LOG_CONS, LOG_USER);
-}
-
-SysLogger::~SysLogger()
-{
-	closelog();
-}
-
-SysLogger &SysLogger::operator =(const SysLogger &o)
-{
-	return *this;
-}
-
-bool SysLogger::operator ==(const Config::Log &conf)
-{
-	if ((ILogger::Type)conf.type != ILogger::Type::SYSLOG)
-		throw Exception("SysLogger error: Comparison with invalid Log Type");
-
-	return true;
-}
-
-void SysLogger::Log(const LogType &log_type, const std::string &msg)
-{
-	switch(log_type)
-	{
-		case LogType::INFO:
-			syslog(LOG_INFO, "%s", msg.c_str());
-			break;
-		case LogType::WARNING:
-			syslog(LOG_WARNING, "%s", msg.c_str());
-			break;
-		case LogType::ERROR:
-			syslog(LOG_ERR, "%s", msg.c_str());
-			break;
-		default:
-			return ;
-	}
-}
-
-void SysLogger::Update(const Config::Log &conf)
-{
-	if (*this == conf)
-		return;
 }

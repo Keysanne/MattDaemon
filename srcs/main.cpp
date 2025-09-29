@@ -5,9 +5,33 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <atomic>
+# include <csignal>
+#include <Logger.h>
 
+FileLogger g_logger("/var/log/matt_daemon", "matt_daemon.log");
 std::atomic<bool> g_running(true);
 Server *g_server;
+
+void handle_signal(int sig) {
+    switch (sig) {
+        case SIGINT:
+        case SIGTERM:
+		case SIGQUIT:
+            g_running = false;
+            break;
+    }
+}
+
+void setup_signal_handlers() {
+    struct sigaction sa {};
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    sigaction(SIGINT,  &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
+    sigaction(SIGHUP,  &sa, nullptr);
+}
 
 int main(int argc, char **argv, char **env)
 {
@@ -42,10 +66,12 @@ int main(int argc, char **argv, char **env)
     close(STDIN_FILENO);
     close(STDERR_FILENO);
     close(STDOUT_FILENO);
+	
+	setup_signal_handlers();
 
 	try
 	{
-		g_server = new Server(argv[1]);
+		g_server = new Server(&g_logger);
 		g_server->Run(g_running);
 		delete g_server;
 	}
