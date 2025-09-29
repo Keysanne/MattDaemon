@@ -65,7 +65,6 @@ Server::Server(FileLogger *logger) : _logger(logger)
 
 void Server::New_connection()
 {
-	// limiter a MAX
     socklen_t   addrlen = sizeof(struct sockaddr_storage);
     struct      sockaddr_in client_addr;
     char        _ip_str[32];
@@ -90,13 +89,19 @@ void Server::New_connection()
 			this->_ip[i]         	    = str;
         }
     }
-    else
+    else if (this->_numfds < MAX)
     {
         this->_pollfds[this->_numfds].fd 	    = fd_new;
 		this->_pollfds[this->_numfds].events    = POLLIN;
 		this->_pollfds[this->_numfds].revents   = 0;
 		this->_ip[this->_numfds]                = str;
 		this->_numfds++;
+    }
+    else
+    {
+        send(fd_new, "Too much client try again later\n", 32, 0);
+        Log(ILogger::LogType::INFO, "User from " + str + " tried to connect but the server is full");
+        return ;
     }
     send(fd_new, "MattDaemon~>", 12, 0);
     Log(ILogger::LogType::INFO, "New connection from " + str);
@@ -197,7 +202,8 @@ int Server::Handle(std::string action, int fd)
     }
     else
     {
-        Log(ILogger::LogType::INFO, "The user from " + this->_ip[fd] + " input" + action);
+        action.pop_back();
+        Log(ILogger::LogType::INFO, "The user from " + this->_ip[fd] + " input " + action);
         send(this->_pollfds[fd].fd, tmp.c_str(), tmp.length(), 0);
     }
     this->_buffer[fd] = "";
@@ -268,8 +274,8 @@ Server::~Server()
     Log(ILogger::LogType::INFO, "Closing server...");
 	this->_shutdown = true;
     close(this->_pollfds->fd);
-	pthread_join(this->_check_auto_restart, NULL);
 	Log(ILogger::LogType::INFO, "Server closed.");
+	system("rm /var/lock/matt_daemon.lock");
 }
 
 Server::Error::Error(std::string msg) : msg(msg)

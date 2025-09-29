@@ -1,24 +1,32 @@
 #include <server.h>
 #include <iostream>
-#include <sys/socket.h>
-#include <netdb.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <atomic>
 # include <csignal>
-#include <Logger.h>
+#include <fcntl.h>
+#include <filesystem>
 
-FileLogger g_logger("/var/log/matt_daemon", "matt_daemon.log");
+FileLogger *g_logger;
 std::atomic<bool> g_running(true);
 Server *g_server;
 
 void handle_signal(int sig) {
     switch (sig) {
         case SIGINT:
+        	g_logger->Log(ILogger::LogType::INFO, "SIGINT received");
+            g_running = false;
+			break;
         case SIGTERM:
+        	g_logger->Log(ILogger::LogType::INFO, "SIGTERM received");
+            g_running = false;
+			break;
 		case SIGQUIT:
+        	g_logger->Log(ILogger::LogType::INFO, "SIGQUIT received");
             g_running = false;
             break;
+		default:
+			g_logger->Log(ILogger::LogType::INFO, "unmanaged signal (" + std::to_string(sig) + ") received");
+			break;
     }
 }
 
@@ -35,12 +43,17 @@ void setup_signal_handlers() {
 
 int main(int argc, char **argv, char **env)
 {
-	if (argc != 2)
+	if (geteuid() != 0)
 	{
-		std::cout << "Error\nUsage : ./MattDaemon [config_file]" << std::endl;
-		return -1;
+        std::cout << "You need to be root !" << std::endl;
+        return 1;
+    }
+	if (std::filesystem::exists("/var/lock/matt_daemon.lock"))
+	{
+		std::cout << "MattDaemon already launched (/var/lock/matt_daemon.lock exist !)" << std::endl;
+        return 1;
 	}
-
+	g_logger = new FileLogger("/var/log/matt_daemon", "matt_daemon.log");
 	std::cout << "Your server will be on the adress : " << std::endl;
 	system("ifconfig | grep -w 'inet 10.*.*.*' | awk '{print $2}' | tr -d '\\n'");
     std::cout << ":" << PORT << std::endl;
@@ -63,15 +76,22 @@ int main(int argc, char **argv, char **env)
 		std::cout << "The Server didn't start (Setsid failed)" << std::endl;
 		return -1;
 	}
-    close(STDIN_FILENO);
-    close(STDERR_FILENO);
-    close(STDOUT_FILENO);
+	int fd = open("/dev/null", O_RDWR);
+	if (fd != -1)
+	{
+		dup2(fd, STDIN_FILENO);
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+			if (fd > 2)
+				close(fd);
+	}
 	
 	setup_signal_handlers();
 
 	try
 	{
-		g_server = new Server(&g_logger);
+		system("touch /var/lock/matt_daemon.lock");
+		g_server = new Server(g_logger);
 		g_server->Run(g_running);
 		delete g_server;
 	}
